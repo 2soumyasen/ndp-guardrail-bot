@@ -1,11 +1,14 @@
 {
-  "name": "ndp-guardrail-botal",
+  "name": "ndp-guardrail-bot",
   "version": "1.0.0",
+  "type": "module",
   "main": "bot.js",
-  "scripts": { "start": "node bot.js" },
+  "scripts": {
+    "start": "node bot.js"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.22",
-    "pino": "^8.16.0",
-    "qrcode-terminal": "^0.12.0"
+    "@whiskeysockets/baileys": "^6.7.0",
+    "@google/generative-ai": "^0.21.0",
+    "pino": "^9.0.0"
   }
 }
