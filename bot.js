@@ -1,46 +1,29 @@
 const http = require('http');
-http.createServer((req, res) => res.end('NDP Guard Live')).listen(process.env.PORT || 3000);
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const readline = require('readline');
+let qrCodeData = null;
+let connected = false;
 
-const PHONE_NUMBER = "917003197209"; // <-- PUT YOUR 2ND WHATSAPP NUMBER HERE WITH 91
-
-async function startBot() {
+async function start() {
     const { state, saveCreds } = await useMultiFileAuthState('auth');
-    const sock = makeWASocket({
-        auth: state,
-        logger: pino({ level: 'silent' }),
-        browser: ['NDP Guard', 'Chrome', '1.0.0']
-    });
-
-    if (!sock.authState.creds.registered) {
-        setTimeout(async () => {
-            try {
-                const code = await sock.requestPairingCode(PHONE_NUMBER);
-                console.log('\n\n=========================================');
-                console.log('YOUR PAIRING CODE IS:', code);
-                console.log('=========================================\n');
-                console.log('Go to WhatsApp -> Linked Devices -> Link a device -> Link with phone number -> Enter this code');
-            } catch (e) {
-                console.log('Error getting code:', e.message);
-            }
-        }, 3000);
-    }
-
+    const { version } = await fetchLatestBaileysVersion();
+    const sock = makeWASocket({ version, auth: state, logger: pino({level:'silent'}), browser: ['Ubuntu','Chrome','110'] });
     sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
-            const code = lastDisconnect?.error?.output?.statusCode;
-            console.log('Closed, code:', code);
-            if (code !== DisconnectReason.loggedOut) setTimeout(startBot, 3000);
-        } else if (connection === 'open') {
-            console.log('✅✅✅ BOT CONNECTED! ✅✅✅');
-        }
+    sock.ev.on('connection.update', ({connection, qr, lastDisconnect})=>{
+        if(qr){ qrCodeData = qr; connected = false; console.log('QR Generated - Open your Render link to scan'); }
+        if(connection==='open'){ connected=true; qrCodeData=null; console.log('✅ CONNECTED ✅'); }
+        if(connection==='close' && lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut){ setTimeout(start,3000); }
     });
 }
+start();
 
-startBot();
+http.createServer((req,res)=>{
+    if(connected){
+        res.end('<h1>✅ BOT CONNECTED SUCCESSFULLY - 7003197209</h1><p>You can close this.</p>');
+    } else if(qrCodeData){
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrCodeData)}`;
+        res.end(`<html><body style="text-align:center;font-family:sans-serif"><h2>Scan with Business WhatsApp 7003197209</h2><p>Linked Devices > Link a device</p><img src="${qrUrl}" style="width:400px;height:400px;border:10px solid black"><br><br><button onclick="location.reload()">Refresh QR</button><p>QR changes every 30 sec - Refresh if expired</p></body></html>`);
+    } else {
+        res.end('<h2>Starting... Wait 10 sec and refresh</h2><script>setTimeout(()=>location.reload(),3000)</script>');
+    }
+}).listen(process.env.PORT||3000);
