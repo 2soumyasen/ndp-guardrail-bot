@@ -5,7 +5,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const pino = require('pino');
 const readline = require('readline');
 
-const PHONE_NUMBER = "7003197209"; // <-- PUT YOUR 2ND WHATSAPP NUMBER HERE WITH 91
+const PHONE_NUMBER = "917003197209"; // <-- PUT YOUR 2ND WHATSAPP NUMBER HERE WITH 91
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth');
