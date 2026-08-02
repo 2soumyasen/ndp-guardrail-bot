@@ -1,7 +1,6 @@
 {
   "name": "ndp-guardrail-bot",
   "version": "1.0.0",
-  "description": "NDP Guardrail Bot",
   "type": "module",
   "main": "bot.js",
   "scripts": {
