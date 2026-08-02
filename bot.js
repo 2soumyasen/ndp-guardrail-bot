@@ -1,4 +1,4 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
+import { default as makeWASocket,  useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import pino from "pino"
 import http from "http"
