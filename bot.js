@@ -1,95 +1,117 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
-import qrcode from "qrcode";
-import express from "express";
-
-let qrCodeData = null;
-
-// GEMINI AI CHECK
-async function checkWithGemini(text) {
-  try {
-    if (!process.env.GEMINI_KEY) return null;
-    const prompt = `Classify this message: "${text}". Reply ONLY JSON {"abusive": true/false, "political": true/false}. abusive=gaali, harassment. political=bjp, congress, tmc, modi, rahul, mamata, election, vote etc.`;
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-    const data = await res.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return JSON.parse(raw.replace(/```json|```/g, "").trim());
-  } catch (e) {
-    console.log("AI Error:", e.message);
-    return null;
-  }
-}
-
-const ABUSE_WORDS = ["bc","mc","bkl","chutiya","madarchod","behenchod","gandu","lodu","randi","bhosdi","bsdk","tmkc","chutia","fuck","bitch","asshole"];
-const POLITICAL_WORDS = ["bjp","congress","inc","aap","tmc","cpm","modi","amit shah","rahul gandhi","mamata","yogi","kejriwal","rss","election","vote","politics","bjym"];
-
-function keywordCheck(text) {
-  const t = text.toLowerCase();
-  return {
-    abusive: ABUSE_WORDS.some(w => t.includes(w)),
-    political: POLITICAL_WORDS.some(w => t.includes(w))
-  };
-}
-
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth");
-  const sock = makeWASocket({ auth: state, printQRInTerminal: true, browser: ["NDP Guard", "Chrome", "1.0"] });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      qrCodeData = await qrcode.toDataURL(qr);
-      console.log("QR Generated");
-    }
-    if (connection === "close") {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      if (shouldReconnect) startBot();
-    } else if (connection === "open") {
-      console.log("NDP GUARD ACTIVE");
-      qrCodeData = null;
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    for (let msg of messages) {
-      try {
-        if (!msg.message || msg.key.fromMe) continue;
-        const jid = msg.key.remoteJid;
-        if (!jid.endsWith("@g.us")) continue;
-        let text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption || "";
-        if (!text) continue;
-        let result = keywordCheck(text);
-        if (!result.abusive &&!result.political) {
-          const ai = await checkWithGemini(text);
-          if (ai) result = ai;
-        }
-        if (result.abusive || result.political) {
-          console.log(`DELETING "${text.substring(0,50)}"`);
-          await sock.sendMessage(jid, { delete: msg.key });
-        }
-      } catch (e) {
-        console.log("Delete Error:", e.message);
-      }
-    }
-  });
-}
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+  makeCacheableSignalKeyStore,
+  fetchLatestBaileysVersion
+} from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import express from 'express';
+import fs from 'fs';
+import qrcode from 'qrcode-terminal';
+import pino from 'pino';
 
 const app = express();
-app.get("/", (req, res) => {
-  if (!qrCodeData) {
-    return res.send(`<h1>NDP Guard Running ✅</h1><p>Connected</p><p>${new Date().toLocaleString()}</p><script>setTimeout(()=>location.reload(),10000)</script>`);
-  }
-  res.send(`<center><h1>Scan QR</h1><img src="${qrCodeData}" style="width:330px;border:8px solid black"/><script>setTimeout(()=>location.reload(),15000)</script></center>`);
-});
+app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
-});
+app.get('/', (req, res) => res.send('NDP Guardrail Bot Running ✅ - v6.7.24'));
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
-startBot();
+app.listen(PORT, () => console.log(`Express Server running on port ${PORT}`));
+
+const AUTH_FOLDER = './auth_info';
+if (!fs.existsSync(AUTH_FOLDER)) {
+  fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+}
+
+// --- NDP GUARDRAIL CONFIG ---
+const BAD_WORDS = ["abuse", "spam", "fake", "scam"]; // add your NDP list
+const ANTI_LINK = true;
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+  const { version } = await fetchLatestBaileysVersion();
+
+  console.log(`Using Baileys version: ${version}`);
+
+  const sock = makeWASocket({
+    version,
+    logger: pino({ level: 'silent' }),
+    printQRInTerminal: false,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }).child({})),
+    },
+    browser: ["NDP Guard", "Chrome", "1.0"],
+    syncFullHistory: false,
+  });
+
+  sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log('================ QR CODE ================');
+      qrcode.generate(qr, { small: true });
+      console.log('=========================================');
+    }
+
+    if (connection === 'close') {
+      let shouldReconnect = true;
+      if (lastDisconnect?.error) {
+        const boomError = Boom.boomify(lastDisconnect.error);
+        const statusCode = boomError?.output?.statusCode;
+        shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        console.log(`Connection closed, status: ${statusCode}, reconnecting: ${shouldReconnect}`);
+      }
+      if (shouldReconnect) {
+        setTimeout(() => startBot(), 3000);
+      } else {
+        console.log('Logged out, delete auth_info folder and restart');
+      }
+    }
+
+    if (connection === 'open') {
+      console.log('✅ WhatsApp Connected Successfully!');
+      console.log(`Bot ID: ${sock.user.id}`);
+    }
+  });
+
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+    const m = messages[0];
+    if (!m?.message) return;
+    if (m.key.fromMe) return;
+
+    const from = m.key.remoteJid;
+    const isGroup = from.endsWith('@g.us');
+    const text = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || "";
+
+    if (!text) return;
+    console.log(`[${isGroup ? 'GROUP' : 'DM'}] ${from}: ${text}`);
+
+    const lowerText = text.toLowerCase();
+
+    // 1. Guardrail: Anti-Link
+    if (ANTI_LINK && (lowerText.includes('http://') || lowerText.includes('https://') || lowerText.includes('wa.me/'))) {
+      await sock.sendMessage(from, { text: '⚠️ *NDP Guardrail:* Links are not allowed!' }, { quoted: m });
+      return;
+    }
+
+    // 2. Guardrail: Bad Words Filter
+    for (const word of BAD_WORDS) {
+      if (lowerText.includes(word)) {
+        await sock.sendMessage(from, { text: `⚠️ *NDP Guardrail:* Message blocked due to policy violation: "${word}"` }, { quoted: m });
+        return;
+      }
+    }
+
+    // 3. Commands
+    if (lowerText === 'ping') {
+      await sock.sendMessage(from, { text: 'Pong! 🛡️ NDP Guard Active\nBaileys: 6.7.24\nNode: 22.13.0' }, { quoted: m });
+    }
+
+    if (lowerText === 'help' || lowerText === 'menu') {
+      await sock.sendMessage(from, { 
+        text: `
