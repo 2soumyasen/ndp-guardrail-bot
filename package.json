@@ -1,19 +1,20 @@
 {
   "name": "ndp-guardrail-bot",
   "version": "1.0.0",
-  "description": "NDP Guardrail WhatsApp Bot - Anti Abuse + Anti Political",
+  "description": "NDP Guardrail Bot",
   "type": "module",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "engines": {
-    "node": "22.x"
+    "node": "22.13.0"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.24",
+    "@hapi/boom": "^10.0.1",
     "express": "^4.21.1",
-    "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "pino": "^9.6.0"
   }
 }
