@@ -1,5 +1,8 @@
-import makeWASocket from "@whiskeysockets/baileys"
-import { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
+import pkg from "@whiskeysockets/baileys"
+const makeWASocket = pkg.default
+const { useMultiFileAuthState, DisconnectReason } = pkg
+//import makeWASocket from "@whiskeysockets/baileys"
+//import { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
 //import { default as makeWASocket,  useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import pino from "pino"
