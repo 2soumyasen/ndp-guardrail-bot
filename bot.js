@@ -14,25 +14,28 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('NDP Guardrail Bot Running ✅ - v6.7.24'));
-app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
-
-app.listen(PORT, () => console.log(`Express Server running on port ${PORT}`));
+app.get('/', (req, res) => {
+  res.send('NDP Guardrail Bot Running - Baileys 6.7.24');
+});
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});
 
 const AUTH_FOLDER = './auth_info';
 if (!fs.existsSync(AUTH_FOLDER)) {
   fs.mkdirSync(AUTH_FOLDER, { recursive: true });
 }
 
-// --- NDP GUARDRAIL CONFIG ---
-const BAD_WORDS = ["abuse", "spam", "fake", "scam"]; // add your NDP list
+const BAD_WORDS = ["abuse", "spam", "scam", "fake"];
 const ANTI_LINK = true;
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
   const { version } = await fetchLatestBaileysVersion();
-
-  console.log(`Using Baileys version: ${version}`);
+  console.log(`Baileys Version: ${version}`);
 
   const sock = makeWASocket({
     version,
@@ -52,66 +55,64 @@ async function startBot() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('================ QR CODE ================');
+      console.log('--- QR CODE ---');
       qrcode.generate(qr, { small: true });
-      console.log('=========================================');
+      console.log('--- SCAN ABOVE ---');
     }
 
     if (connection === 'close') {
       let shouldReconnect = true;
-      if (lastDisconnect?.error) {
-        const boomError = Boom.boomify(lastDisconnect.error);
-        const statusCode = boomError?.output?.statusCode;
-        shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        console.log(`Connection closed, status: ${statusCode}, reconnecting: ${shouldReconnect}`);
+      if (lastDisconnect && lastDisconnect.error) {
+        const boomErr = Boom.boomify(lastDisconnect.error);
+        const code = boomErr.output.statusCode;
+        shouldReconnect = code!== DisconnectReason.loggedOut;
+        console.log(`Closed with code ${code}, reconnect: ${shouldReconnect}`);
       }
       if (shouldReconnect) {
-        setTimeout(() => startBot(), 3000);
-      } else {
-        console.log('Logged out, delete auth_info folder and restart');
+        setTimeout(() => { startBot(); }, 3000);
       }
     }
 
     if (connection === 'open') {
-      console.log('✅ WhatsApp Connected Successfully!');
-      console.log(`Bot ID: ${sock.user.id}`);
+      console.log('✅ Connected to WhatsApp');
     }
   });
 
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    const m = messages[0];
-    if (!m?.message) return;
+  sock.ev.on('messages.upsert', async (upsert) => {
+    const m = upsert.messages[0];
+    if (!m ||!m.message) return;
     if (m.key.fromMe) return;
 
     const from = m.key.remoteJid;
     const isGroup = from.endsWith('@g.us');
-    const text = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || "";
-
+    const text = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || '';
     if (!text) return;
-    console.log(`[${isGroup ? 'GROUP' : 'DM'}] ${from}: ${text}`);
 
-    const lowerText = text.toLowerCase();
+    console.log(`[${isGroup? 'GROUP' : 'DM'}] ${from}: ${text}`);
+    const lower = text.toLowerCase();
 
-    // 1. Guardrail: Anti-Link
-    if (ANTI_LINK && (lowerText.includes('http://') || lowerText.includes('https://') || lowerText.includes('wa.me/'))) {
-      await sock.sendMessage(from, { text: '⚠️ *NDP Guardrail:* Links are not allowed!' }, { quoted: m });
+    if (ANTI_LINK && (lower.includes('http://') || lower.includes('https://') || lower.includes('wa.me'))) {
+      await sock.sendMessage(from, { text: '⚠️ NDP Guard: Links not allowed!' }, { quoted: m });
       return;
     }
 
-    // 2. Guardrail: Bad Words Filter
-    for (const word of BAD_WORDS) {
-      if (lowerText.includes(word)) {
-        await sock.sendMessage(from, { text: `⚠️ *NDP Guardrail:* Message blocked due to policy violation: "${word}"` }, { quoted: m });
+    for (const w of BAD_WORDS) {
+      if (lower.includes(w)) {
+        await sock.sendMessage(from, { text: `⚠️ Blocked word: ${w}` }, { quoted: m });
         return;
       }
     }
 
-    // 3. Commands
-    if (lowerText === 'ping') {
-      await sock.sendMessage(from, { text: 'Pong! 🛡️ NDP Guard Active\nBaileys: 6.7.24\nNode: 22.13.0' }, { quoted: m });
+    if (lower === 'ping') {
+      await sock.sendMessage(from, { text: 'Pong! Guard Active 🛡️ v6.7.24 Node 22.13.0' }, { quoted: m });
     }
 
-    if (lowerText === 'help' || lowerText === 'menu') {
-      await sock.sendMessage(from, { 
-        text: `
+    if (lower === 'help') {
+      await sock.sendMessage(from, { text: '*NDP Guard Menu*\n- ping\n- help\nGuard: ON' }, { quoted: m });
+    }
+  });
+}
+
+startBot().catch((e) => {
+  console.error('Fatal', e);
+});
