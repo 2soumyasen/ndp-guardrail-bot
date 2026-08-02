@@ -7,25 +7,41 @@ import qrcode from "qrcode"
 const app = express();
 let qrCodeData = "";
 
-const BAD_WORDS = ["andhovakto", "andhavakto", "andha", "choti chata", "balish chata", "khanki", "bainchod", "bokachoda", "madarchod"];
+const BAD_WORDS = [
+  "andhovakto", "andhavakto", "andhbhakt", "ondho bhokto",
+  "choti chata", "chotichata", "balish chata", "balishchata",
+  "khanki", "bainchod", "bokachoda", "madarchod", "randi"
+];
 
 async function isBadWithAI(text) {
   try {
-    if (BAD_WORDS.some(w => text.toLowerCase().includes(w))) return true;
+    const lower = text.toLowerCase();
+    if (BAD_WORDS.some(w => lower.includes(w))) {
+      console.log("Blocked by list:", text);
+      return true;
+    }
+
+    const prompt = `You are moderator for Bengali WhatsApp group.
+    Message/Caption: "${text}"
+    Task:
+    1. Is it abusive/slang/insult? Consider ALL transliterations: andhavakto/andhovakto/ondho, choti chata/chotichata etc + semantic abuse.
+    2. Is it political? Mentions BJP, TMC, CPM, Congress, Modi, Mamata, Shah, election, vote, rajniti etc or political context.
+    Reply JSON ONLY: {"abusive":"YES/NO","political":"YES/NO"}`;
 
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `Is this abusive in Bengali/Hinglish? Text: "${text}". Reply only YES or NO.` }] }]
-      })
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
+
     const data = await res.json();
-    const ans = data?.candidates?.[0]?.content?.parts?.[0]?.text || "NO";
-    console.log(`AI Check for "${text}": ${ans}`);
-    return ans.toUpperCase().includes("YES");
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    console.log("AI:", raw);
+    const result = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    if (result.abusive === "YES" || result.political === "YES") return true;
+    return false;
   } catch (e) {
-    console.log("Gemini error", e.message);
+    console.log("AI Error:", e.message);
     return false;
   }
 }
@@ -38,35 +54,10 @@ async function startBot() {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
       qrCodeData = await qrcode.toDataURL(qr);
-      console.log("QR Generated");
+      console.log("QR Generated - Open Render URL");
     }
     if (connection === "close") {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
       if (shouldReconnect) startBot();
     } else if (connection === "open") {
-      console.log("NDP Guard Active! Connected = true");
-    }
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
-    if (!text) return;
-    console.log("New msg:", text);
-    if (await isBadWithAI(text)) {
-      console.log("Deleting:", text);
-      await sock.sendMessage(msg.key.remoteJid, { delete: msg.key });
-    }
-  });
-}
-
-app.get("/", async (req, res) => {
-  if (!qrCodeData) return res.send("<h1>Waiting for QR... Refresh in 10 sec</h1>");
-  res.send(`<img src="${qrCodeData}" style="width:300px"><br><h2>Scan in WhatsApp > Linked Devices</h2>`);
-});
-
-app.listen(10000, () => console.log("Web server on 10000"));
-startBot();
+      console.log("NDP Guard
