@@ -1,86 +1,75 @@
-const { default: makeWASocket, useMultiFileAuthState, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const P = require('pino');
 const qrcode = require('qrcode-terminal');
-const fs = require('fs');
-const Tesseract = require('tesseract.js');
-
-const TARGET_SUBJECT = "NDP 2000/2002 General";
-let TARGET_GROUP_ID = null;
 
 const BANNED_WORDS = [
-  "bjp", "congress", "aap", "tmc", "cpim", "cpm", "rss", "bjym", "trinamool",
-  "modi", "rahul", "kejriwal", "mamata", "yogi", "didi", "bhaijaan",
-  "election", "vote", "politics", "namo", "pappu", "bhakt", "chamcha",
-  "chunav", "chunao", "neta", "mantri", "vidhayak", "sansad", "sarkar", "rajniti", "rajneeti",
-  "bhot", "bhote", "nirbachan", "nirbacon", "khela hobe", "choti chata",
-  "चुनाव", "नेता", "मंत्री", "सरकार", "राजनीति", "भाजपा", "कांग्रेस", "मोदी", "राहुल",
-  "ভোট", "নির্বাচন", "নেতা", "মন্ত্রী", "সরকার", "রাজনীতি", "বিজেপি", "তৃণমূল", "খেলা হবে"
+  "bjp","congress","aap","tmc","cpm","cpim","modi","rahul","mamata",
+  "election","vote","voting","manifesto","rally","campaign",
+  "rajniti","bhot","nirbachan","ভোট","রাজনীতি"
 ];
 
-let violations = {};
+let warnings = {};
+let msgStore = {};
 
-async function checkText(text) {
-  if (!text) return null;
-  const lower = text.toLowerCase();
-  return BANNED_WORDS.find(w => lower.includes(w));
-}
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
 
-async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth');
-  const sock = makeWASocket({ auth: state });
-  sock.ev.on('creds.update', saveCreds);
-  sock.ev.on('connection.update', (u) => {
-    if (u.qr) { console.log("SCAN THIS QR:"); qrcode.generate(u.qr, { small: true }); }
-    if (u.connection === 'open') console.log("✅ BOT READY - NDP Guardrail ON");
+  const sock = makeWASocket({
+    auth: state,
+    logger: P({ level: 'silent' }),
+    printQRInTerminal: false
   });
 
-  sock.ev.on('connection.update', async () => {
-    try {
-      const allGroups = await sock.groupFetchAllParticipating();
-      for (const id in allGroups) {
-        if (allGroups[id].subject && allGroups[id].subject.includes(TARGET_SUBJECT)) {
-          TARGET_GROUP_ID = id;
-          console.log(`✅ Target locked: ${allGroups[id].subject} -> ${id}`);
-        }
-      }
-    } catch {}
+  sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if (qr) {
+      console.log("SCAN THIS QR WITH YOUR BOT NUMBER:");
+      qrcode.generate(qr, { small: true });
+    }
+    if (connection === 'close') {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
+      if (shouldReconnect) startBot();
+    } else if (connection === 'open') {
+      console.log("BOT CONNECTED SUCCESSFULLY!");
+    }
   });
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
-      const gid = msg.key.remoteJid;
-      if (!gid.endsWith('@g.us')) continue;
-      if (TARGET_GROUP_ID && gid!== TARGET_GROUP_ID) continue;
+      const id = msg.key.remoteJid;
+      if (!id.endsWith('@g.us')) continue;
+
+      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
+      if (!text) continue;
+
+      const lowerText = text.toLowerCase();
+      const isViolation = BANNED_WORDS.some(w => lowerText.includes(w));
+
+      if (!isViolation) continue;
 
       const sender = msg.key.participant;
-      let textToCheck = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || "";
-      let isMedia =!!msg.message.imageMessage;
-      let hit = await checkText(textToCheck);
+      msgStore[msg.key.id] = msg;
 
-      if (!hit && isMedia) {
-        try {
-          const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: { level: 'silent' } });
-          fs.writeFileSync('temp.jpg', buffer);
-          const { data: { text } } = await Tesseract.recognize('temp.jpg', 'eng+hin+ben');
-          if (text) hit = await checkText(text);
-        } catch (e) {}
-      }
+      try {
+        await sock.sendMessage(id, { delete: msg.key });
+        console.log(`Deleted violation from ${sender}`);
 
-      const isForwarded = (msg.message.imageMessage?.contextInfo?.forwardingScore || 0) > 3;
-      if (!hit && isMedia && isForwarded) hit = "forwarded poster";
+        warnings[sender] = (warnings[sender] || 0) + 1;
 
-      if (hit) {
-        try {
-          await sock.sendMessage(gid, { delete: msg.key });
-          violations[sender] = (violations[sender] || 0) + 1;
-          await sock.sendMessage(gid, { text: `🚧 *NDP Political Guardrail*\nRemoved - Found: "${hit}"\n@${sender.split('@')[0]} Warning ${violations[sender]}/3\nNo political talk/posters in NDP 2000/2002 General`, mentions: [sender] });
-          if (violations[sender] >= 3) {
-            await sock.groupParticipantsUpdate(gid, [sender], "remove");
-            violations[sender] = 0;
-          }
-        } catch (e) { console.log("Make bot Admin!"); }
+        if (warnings[sender] >= 3) {
+          await sock.sendMessage(id, { text: `⚠️ @${sender.split('@')[0]} has been warned 3 times for political posts. Admins please take action.`, mentions: [sender] });
+        } else {
+          await sock.sendMessage(id, { text: `🚫 Political content not allowed here. Warning ${warnings[sender]}/3 @${sender.split('@')[0]}`, mentions: [sender] });
+        }
+
+      } catch (e) {
+        console.log("Delete failed - make bot admin!", e.message);
       }
     }
   });
 }
-start();
+
+startBot();
