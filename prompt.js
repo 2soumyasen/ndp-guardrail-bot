@@ -2,7 +2,7 @@
 
 const TIER1_GALI = [
   'অন্ধভক্ত','অন্ধভকত','ভামপন্থী','চটিচাটা','চটি চাটা','চামচা','চামচে','দালাল','চাটুখোর',
-  'andhbhakt','andhbhakto','andhovokto','chatichata','chotichata','chamcha','dalal'
+  'andhbhakt','andhbhakto','andhovokto','chatichata','chotichata','chamcha','dalal','andhobhakt'
 ];
 
 // Party names - HARD BLOCK if combined with insult
