@@ -17,7 +17,7 @@ app.get('/qr', async (req,res) => {
 app.listen(process.env.PORT || 3000, () => console.log('Server running'));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite-001" });
 
 async function checkMessage(text) {
   if (!text) return false;
