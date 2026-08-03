@@ -35,23 +35,21 @@ const ANTI_LINK = true;
 async function checkWithGemini(text) {
   try {
     const prompt = `
-You are NDP Guardrail - strict political filter for a Bengali WhatsApp group.
+You are NDP Guardrail. Your rule: WHEN IN DOUBT, BLOCK.
 
-Message to check: "${text}"
+Message: "${text}"
 
-BLOCK the message if it contains ANY of these, even hidden/indirect:
+DECISION:
 
-1. Any Indian politics: TMC, BJP, Trinamool, Congress, CPIM, CPM, Modi, Mamata, Didi, Abhishek, Suvendu, Rahul, election, vote, neta, rajniti, party, andolon, michil
-2. Bengali gali / slang / insult / adult joke - even if written in English letters like "bokachoda", "khanki", "bal", "bc", "mc"
-3. Religious hate, communal speech
-4. Spam, promotion, earning app, adult link
-5. Sarcasm or coded political attack - e.g. "khela hobe", "pisi bhai", "feku", "pappu"
+BLOCK if:
+1. Contains any political party, leader, vote, election, andhbhakt, bham, chatichata, chamcha, daliya politics in ANY language, Bengali font, or English letters
+2. Even if message is preaching neutrality, peace, maturity - like "let's not use andhbhakt", "all parties do wrong", "avoid party blindness" - BLOCK. Because it still starts political discussion.
+3. Contains any Bengali/Hindi/English gali, insult, adult joke
+4. You are even 50% confused whether it's political or not - BLOCK. Better to delete a borderline good message than allow a political fight to start.
 
-Even if the bad meaning is hidden inside a long story, or written in mixed Banglish, you must BLOCK.
+ALLOW only if you are 100% sure it has ZERO politics and ZERO gali - just normal friendship, study, fun talk.
 
-If message is normal chat, friendship, study, help, general talk - ALLOW.
-
-Reply ONLY one word: BLOCK or ALLOW. No explanation.
+Reply ONLY: BLOCK or ALLOW
 `;
     const result = await model.generateContent(prompt);
     const res = result.response.text().trim().toUpperCase();
