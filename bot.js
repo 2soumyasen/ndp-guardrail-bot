@@ -1,7 +1,8 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const { TIER1_GALI, PARTY_WORDS, INSULT_WORDS, getPrompt } = require("./prompt");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+//const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 const express = require('express');
 const QRCode = require('qrcode');
 
@@ -16,8 +17,9 @@ app.get('/qr', async (req,res) => {
 });
 app.listen(process.env.PORT || 3000, () => console.log('Server running'));
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite-001" });
+//const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+//const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite-001" });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 async function checkMessage(text) {
   if (!text) return false;
@@ -32,13 +34,16 @@ async function checkMessage(text) {
     return true;
   }
   try {
-    const result = await model.generateContent(getPrompt(text));
-    const reply = result.response.text().trim().toUpperCase();
-    console.log(`-> AI: ${reply}`);
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [{ role: "user", content: getPrompt(text) }],
+      model: "llama-3.1-8b-instant",
+    });
+    const reply = chatCompletion.choices[0]?.message?.content?.trim().toUpperCase() || "ALLOW";
+    console.log(-> AI: ${reply});
     return reply.includes('BLOCK');
   } catch (e) {
-    console.log('Gemini fail', e.message);
-    return PARTY_WORDS.some(p => lower.includes(p));
+    console.log('Groq fail', e.message);
+    return false;
   }
 }
 
