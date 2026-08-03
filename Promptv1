@@ -1,0 +1,23 @@
+async function checkWithGemini(text) {
+  try {
+    const prompt = `
+You are NDP Guardrail. Your rule: WHEN IN DOUBT, BLOCK.
+
+Message: "${text}"
+
+DECISION:
+
+BLOCK if:
+1. Contains any political party, leader, vote, election, andhbhakt, bham, chatichata, chamcha, daliya politics in ANY language, Bengali font, or English letters
+2. Even if message is preaching neutrality, peace, maturity - like "let's not use andhbhakt", "all parties do wrong", "avoid party blindness" - BLOCK. Because it still starts political discussion.
+3. Contains any Bengali/Hindi/English gali, insult, adult joke
+4. You are even 50% confused whether it's political or not - BLOCK. Better to delete a borderline good message than allow a political fight to start.
+
+ALLOW only if you are 100% sure it has ZERO politics and ZERO gali - just normal friendship, study, fun talk.
+
+Reply ONLY: BLOCK or ALLOW
+`;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim().toUpperCase().includes('BLOCK');
+  } catch (e) { return false; }
+}
