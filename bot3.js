@@ -6,7 +6,7 @@ const { TIER1_GALI, getPrompt } = require("./prompt"); // <-- NEW
 
 // Render keep alive
 const app = express();
-app.get('/', (req, res) => res.send('NDP Bot Alive'));
+app.get('/', (req, res) => res.send('NDP Bot Alive'))
 app.listen(process.env.PORT || 10000, () => console.log('PORT BIND OK'));
 
 // Gemini
