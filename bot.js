@@ -39,7 +39,7 @@ async function checkMessage(text) {
       model: "llama-3.1-8b-instant",
     });
     const reply = chatCompletion.choices[0]?.message?.content?.trim().toUpperCase() || "ALLOW";
-    console.log(-> AI: ${reply});
+    console.log(`-> AI: ${reply}`);
     return reply.includes('BLOCK');
   } catch (e) {
     console.log('Groq fail', e.message);
